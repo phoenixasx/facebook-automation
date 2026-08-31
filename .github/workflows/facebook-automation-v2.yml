@@ -1,0 +1,78 @@
+name: Facebook Automation Post V2 - PHT Schedule
+
+on:
+  schedule:
+    # Monday-Thursday at 8:00 PM PHT (12:00 PM UTC)
+
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  facebook_post:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - name: Prepare logs
+        run: mkdir -p logs
+
+      - name: Show repository files
+        run: |
+          echo "Current directory:"
+          pwd
+          echo "Repository files:"
+          find . -maxdepth 2 -type f | sort
+
+      - name: Install dependencies if available
+        run: |
+          python -m pip install --upgrade pip
+
+          if [ -f requirements.txt ]; then
+            echo "Installing requirements.txt"
+            python -m pip install -r requirements.txt
+          elif [ -f pyproject.toml ]; then
+            echo "Installing project from pyproject.toml"
+            python -m pip install .
+          else
+            echo "No requirements.txt or pyproject.toml found."
+            echo "Skipping dependency installation."
+          fi
+
+      - name: Check main.py
+        run: |
+          if [ ! -f main.py ]; then
+            echo "ERROR: main.py was not found in the repository root."
+            exit 1
+          fi
+
+      - name: Generate and post to Facebook
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          FACEBOOK_ACCESS_TOKEN: ${{ secrets.FACEBOOK_ACCESS_TOKEN }}
+          NEWSAPI_KEY: ${{ secrets.NEWSAPI_KEY }}
+          GOOGLE_SHEETS_ID: ${{ secrets.GOOGLE_SHEETS_ID }}
+          POLLINATIONS_API_KEY: ${{ secrets.POLLINATIONS_API_KEY }}
+          TZ: Asia/Manila
+        run: |
+          set -o pipefail
+          python main.py 2>&1 | tee logs/facebook_post.log
+
+      - name: Upload logs on failure
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: workflow-logs-v2
+          path: logs/
+          if-no-files-found: ignore
+          retention-days: 7
