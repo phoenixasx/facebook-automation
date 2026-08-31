@@ -4,15 +4,17 @@ on:
   schedule:
     # Monday-Thursday at 8:00 PM PHT (12:00 PM UTC)
     - cron: '0 12 * * 1-4'
-    # Friday at 2:00 AM+1 PHT (6:00 PM UTC previous day)
+    # Saturday at 2:00 AM PHT (Friday 6:00 PM UTC)
     - cron: '0 18 * * 5'
     # Saturday at 6:00 PM PHT (10:00 AM UTC)
     - cron: '0 10 * * 6'
     # Sunday at 4:00 PM PHT (8:00 AM UTC)
     - cron: '0 8 * * 0'
 
-  # Allow manual trigger from Actions tab
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   facebook_post:
@@ -21,17 +23,28 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v7
         with:
           python-version: '3.11'
+          cache: pip
+
+      - name: Prepare logs and verify project files
+        run: |
+          mkdir -p logs
+          test -f main.py || { echo 'ERROR: main.py was not found in the repository root.'; exit 1; }
+          test -f requirements.txt || {
+            echo 'ERROR: requirements.txt was not found in the repository root.'
+            echo 'Move it beside main.py, or update the pip install path in this workflow.'
+            exit 1
+          }
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          python -m pip install -r requirements.txt
 
       - name: Generate and post to Facebook
         env:
@@ -42,12 +55,14 @@ jobs:
           POLLINATIONS_API_KEY: ${{ secrets.POLLINATIONS_API_KEY }}
           TZ: Asia/Manila
         run: |
-          python main.py
+          set -o pipefail
+          python main.py 2>&1 | tee logs/facebook_post.log
 
       - name: Upload logs on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v7
         with:
           name: workflow-logs
           path: logs/
+          if-no-files-found: ignore
           retention-days: 7
